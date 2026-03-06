@@ -222,24 +222,36 @@
       <span class="seg-dot" style="background:var(--l)"></span>L
     </button>
   </div>
+  <div class="ctrl-group">
+    <span class="ctrl-label">Compare:</span>
+    <button class="btn active" id="btn-mom" onclick="setCompare('mom')">vs เดือนก่อน</button>
+    <button class="btn" id="btn-yoy" onclick="setCompare('yoy')">vs ปีก่อน (same month)</button>
+  </div>
+  <div class="ctrl-group">
+    <span class="ctrl-label">Period (2026):</span>
+    <button class="btn active" id="period-all" onclick="setPeriod('all')">All</button>
+    <button class="btn" id="period-jan26" onclick="setPeriod('jan26')">Jan</button>
+    <button class="btn" id="period-feb26" onclick="setPeriod('feb26')">Feb</button>
+    <button class="btn" id="period-mar26" onclick="setPeriod('mar26')">Mar</button>
+  </div>
 </div>
 
 <div class="stats-row" id="stats-row"></div>
 
 <div class="grid">
   <div class="card grid-full">
+    <div class="card-title">🎯 Grand Total Trend</div>
+    <div class="chart-wrap">
+      <canvas id="totalChart"></canvas>
+    </div>
+  </div>
+
+  <div class="card grid-full">
     <div class="card-title" id="main-chart-title">📈 Overall Trend — All Segments · Median</div>
     <div class="chart-wrap tall">
       <canvas id="mainChart"></canvas>
     </div>
     <div class="legend" id="main-legend"></div>
-  </div>
-
-  <div class="card grid-full">
-    <div class="card-title">🎯 Grand Total Trend</div>
-    <div class="chart-wrap">
-      <canvas id="totalChart"></canvas>
-    </div>
   </div>
 </div>
 
@@ -459,22 +471,80 @@ function buildTotalChart() {
   });
 }
 
+let currentCompare = 'mom';
+// period index map: 'all' = latest, specific month = its index
+const periodMap = { 'all': 14, 'jan26': 12, 'feb26': 13, 'mar26': 14 };
+let currentPeriod = 'all';
+
+function setPeriod(p) {
+  currentPeriod = p;
+  ['all','jan26','feb26','mar26'].forEach(id => {
+    document.getElementById('period-' + id).classList.toggle('active', id === p);
+  });
+  buildStats();
+}
+
+function setCompare(c) {
+  currentCompare = c;
+  document.getElementById('btn-mom').classList.toggle('active', c === 'mom');
+  document.getElementById('btn-yoy').classList.toggle('active', c === 'yoy');
+  buildStats();
+}
+
 function buildStats() {
   const segs = ['XS','S','M','L'];
   const segColors = { XS: 'var(--xs)', S: 'var(--s)', M: 'var(--m)', L: 'var(--l)' };
-  const latest = months.length - 1;
+
+  // indices for 2026 months: Jan=12, Feb=13, Mar=14
+  const yr2026 = [12, 13, 14];
+  const isAll = currentPeriod === 'all';
+  const latest = isAll ? null : periodMap[currentPeriod];
+
+  const getVal = (s) => {
+    if (isAll) {
+      const sum = yr2026.reduce((a, i) => a + data[s][currentMetric][i], 0);
+      return Math.round(sum / yr2026.length);
+    }
+    return data[s][currentMetric][latest];
+  };
+
+  const getCompareVal = (s) => {
+    if (isAll) {
+      // MoM: average Oct-Dec 2025 (indices 9,10,11) | YoY: average Jan-Mar 2025 (indices 0,1,2)
+      const compareIdxs = currentCompare === 'mom' ? [9, 10, 11] : [0, 1, 2];
+      const sum = compareIdxs.reduce((a, i) => a + data[s][currentMetric][i], 0);
+      return Math.round(sum / compareIdxs.length);
+    }
+    const compareIdx = currentCompare === 'mom' ? latest - 1 : latest - 12;
+    return compareIdx >= 0 ? data[s][currentMetric][compareIdx] : null;
+  };
+
+  const periodLabel = isAll ? 'Avg Jan–Mar 26' : `${months[latest]}`;
+  const compareLabel = isAll
+    ? currentCompare === 'mom' ? 'vs Avg Oct–Dec 25' : 'vs Avg Jan–Mar 25 (YoY)'
+    : currentCompare === 'mom'
+      ? `vs ${months[latest - 1]}`
+      : `vs ${months[latest - 12]} (YoY)`;
+
   const el = document.getElementById('stats-row');
   el.innerHTML = segs.map(s => {
-    const val = data[s][currentMetric][latest];
-    const prev = data[s][currentMetric][latest - 1];
-    const diff = val - prev;
-    const trend = diff >= 0 ? `▲ ${diff}` : `▼ ${Math.abs(diff)}`;
-    const trendColor = diff >= 0 ? '#34d399' : '#f87171';
+    const val = getVal(s);
+    const prevVal = getCompareVal(s);
+    let trendHtml = '';
+    if (prevVal !== null) {
+      const diff = val - prevVal;
+      const pct = prevVal !== 0 ? ((diff / prevVal) * 100).toFixed(1) : '—';
+      const arrow = diff >= 0 ? '▲' : '▼';
+      const trendColor = diff >= 0 ? '#34d399' : '#f87171';
+      trendHtml = `<div style="font-size:11px;color:${trendColor};margin-top:4px;font-family:'Space Mono',monospace">
+        ${arrow} ${Math.abs(diff)} (${Math.abs(pct)}%) ${compareLabel}
+      </div>`;
+    }
     return `<div class="stat-card">
       <div class="stat-seg" style="color:${segColors[s]}">${s}</div>
       <div class="stat-val" style="color:${segColors[s]}">${val}</div>
-      <div class="stat-label">${currentMetric === 'median' ? 'Median' : 'Average'} · Mar 26</div>
-      <div style="font-size:11px;color:${trendColor};margin-top:4px;font-family:'Space Mono',monospace">${trend} vs Feb</div>
+      <div class="stat-label">${currentMetric === 'median' ? 'Median' : 'Average'} · ${periodLabel}</div>
+      ${trendHtml}
     </div>`;
   }).join('');
 }
