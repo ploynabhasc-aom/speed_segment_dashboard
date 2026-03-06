@@ -1,0 +1,515 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Segment Trend Dashboard</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@300;400;500;600&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0a0e1a;
+    --surface: #111827;
+    --surface2: #1a2235;
+    --border: #1e2d45;
+    --xs: #38bdf8;
+    --s: #34d399;
+    --m: #f59e0b;
+    --l: #f87171;
+    --text: #e2e8f0;
+    --muted: #64748b;
+    --accent: #818cf8;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'IBM Plex Sans Thai', sans-serif;
+    min-height: 100vh;
+    padding: 24px;
+  }
+
+  .header {
+    margin-bottom: 28px;
+    border-left: 3px solid var(--accent);
+    padding-left: 16px;
+  }
+
+  .header h1 {
+    font-family: 'Space Mono', monospace;
+    font-size: 20px;
+    color: var(--text);
+    letter-spacing: 0.04em;
+  }
+
+  .header p {
+    color: var(--muted);
+    font-size: 13px;
+    margin-top: 4px;
+  }
+
+  .controls {
+    display: flex;
+    gap: 12px;
+    margin-bottom: 24px;
+    flex-wrap: wrap;
+    align-items: center;
+  }
+
+  .ctrl-group {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+  }
+
+  .ctrl-label {
+    font-size: 11px;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    font-family: 'Space Mono', monospace;
+  }
+
+  .btn {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    color: var(--muted);
+    padding: 6px 14px;
+    border-radius: 6px;
+    font-size: 12px;
+    cursor: pointer;
+    transition: all 0.2s;
+    font-family: 'Space Mono', monospace;
+  }
+
+  .btn:hover { border-color: var(--accent); color: var(--text); }
+  .btn.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+
+  .seg-btn { display: flex; align-items: center; gap: 6px; }
+  .seg-dot { width: 8px; height: 8px; border-radius: 50%; }
+
+  .grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+    margin-bottom: 16px;
+  }
+
+  .grid-full { grid-column: 1 / -1; }
+
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 20px;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .card::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 2px;
+    background: linear-gradient(90deg, var(--accent), transparent);
+  }
+
+  .card-title {
+    font-family: 'Space Mono', monospace;
+    font-size: 11px;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    margin-bottom: 16px;
+  }
+
+  .chart-wrap {
+    position: relative;
+    height: 280px;
+  }
+
+  .chart-wrap.tall { height: 480px; }
+
+  .stats-row {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 12px;
+    margin-bottom: 16px;
+  }
+
+  .stat-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 16px;
+    text-align: center;
+  }
+
+  .stat-seg {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    font-family: 'Space Mono', monospace;
+    margin-bottom: 6px;
+  }
+
+  .stat-val {
+    font-family: 'Space Mono', monospace;
+    font-size: 26px;
+    font-weight: 700;
+  }
+
+  .stat-label {
+    font-size: 11px;
+    color: var(--muted);
+    margin-top: 2px;
+  }
+
+  .legend {
+    display: flex;
+    gap: 16px;
+    flex-wrap: wrap;
+    margin-top: 12px;
+  }
+
+  .legend-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    color: var(--muted);
+  }
+
+  .legend-line {
+    width: 20px;
+    height: 2px;
+    border-radius: 1px;
+  }
+
+  @media (max-width: 700px) {
+    .grid { grid-template-columns: 1fr; }
+    .stats-row { grid-template-columns: repeat(2, 1fr); }
+  }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>SEGMENT TREND ANALYSIS</h1>
+  <p>Registered Month · Jan 2025 – Mar 2026 · Median & Average ราคา</p>
+</div>
+
+<div class="controls">
+  <div class="ctrl-group">
+    <span class="ctrl-label">Metric:</span>
+    <button class="btn active" id="btn-median" onclick="setMetric('median')">Median</button>
+    <button class="btn" id="btn-average" onclick="setMetric('average')">Average</button>
+  </div>
+  <div class="ctrl-group">
+    <span class="ctrl-label">Segments:</span>
+    <button class="btn seg-btn active" id="seg-xs" onclick="toggleSeg('XS')">
+      <span class="seg-dot" style="background:var(--xs)"></span>XS
+    </button>
+    <button class="btn seg-btn active" id="seg-s" onclick="toggleSeg('S')">
+      <span class="seg-dot" style="background:var(--s)"></span>S
+    </button>
+    <button class="btn seg-btn active" id="seg-m" onclick="toggleSeg('M')">
+      <span class="seg-dot" style="background:var(--m)"></span>M
+    </button>
+    <button class="btn seg-btn active" id="seg-l" onclick="toggleSeg('L')">
+      <span class="seg-dot" style="background:var(--l)"></span>L
+    </button>
+  </div>
+</div>
+
+<div class="stats-row" id="stats-row"></div>
+
+<div class="grid">
+  <div class="card grid-full">
+    <div class="card-title" id="main-chart-title">📈 Overall Trend — All Segments · Median</div>
+    <div class="chart-wrap tall">
+      <canvas id="mainChart"></canvas>
+    </div>
+    <div class="legend" id="main-legend"></div>
+  </div>
+
+  <div class="card grid-full">
+    <div class="card-title">🎯 Grand Total Trend</div>
+    <div class="chart-wrap">
+      <canvas id="totalChart"></canvas>
+    </div>
+  </div>
+</div>
+
+<script>
+const months = ['Jan 25','Feb 25','Mar 25','Apr 25','May 25','Jun 25',
+                 'Jul 25','Aug 25','Sep 25','Oct 25','Nov 25','Dec 25',
+                 'Jan 26','Feb 26','Mar 26'];
+
+const data = {
+  XS: { median: [65,55,101,52,31,31,43,26,42,25,40,53,52,27,19],
+         average:[141,101,150,68,47,48,60,34,61,41,47,71,66,50,29] },
+  S:  { median: [26,41,19,21,23,21,24,20,17,19,21,18,20,15,17],
+         average:[72,47,40,33,41,27,52,28,38,23,30,37,30,22,17] },
+  M:  { median: [18,22,17,17,18,26,12,4,18,21,26,24,18,21,19],
+         average:[25,57,22,39,35,117,45,19,31,34,46,39,30,29,23] },
+  L:  { median: [18,23,17,19,17,223,13,18,19,36,25,24,19,18,14],
+         average:[31,41,27,33,26,220,21,47,30,49,44,38,25,27,19] },
+  GT: { median: [38,47,53,32,25,29,27,23,26,24,28,41,29,21,17],
+         average:[104,80,101,54,42,90,51,32,50,38,43,58,51,38,24] }
+};
+
+const colors = {
+  XS: { line:'#38bdf8', fill:'rgba(56,189,248,0.08)' },
+  S:  { line:'#34d399', fill:'rgba(52,211,153,0.08)' },
+  M:  { line:'#f59e0b', fill:'rgba(245,158,11,0.08)' },
+  L:  { line:'#f87171', fill:'rgba(248,113,113,0.08)' },
+  GT: { line:'#818cf8', fill:'rgba(129,140,248,0.1)' }
+};
+
+let currentMetric = 'median';
+let activeSegs = { XS: true, S: true, M: true, L: true };
+
+const chartDefaults = {
+  responsive: true,
+  maintainAspectRatio: false,
+  plugins: {
+    legend: { display: false },
+    tooltip: {
+      backgroundColor: '#1a2235',
+      borderColor: '#1e2d45',
+      borderWidth: 1,
+      titleColor: '#e2e8f0',
+      bodyColor: '#94a3b8',
+      padding: 10,
+      cornerRadius: 8
+    }
+  },
+  scales: {
+    x: {
+      grid: { color: 'rgba(30,45,69,0.6)' },
+      ticks: { color: '#64748b', font: { family: 'Space Mono', size: 10 } }
+    },
+    y: {
+      grid: { color: 'rgba(30,45,69,0.6)' },
+      ticks: { color: '#64748b', font: { family: 'Space Mono', size: 10 } }
+    }
+  }
+};
+
+let mainChart, totalChart;
+
+function makeDataset(seg, metric) {
+  const c = colors[seg];
+  return {
+    label: seg,
+    data: data[seg][metric],
+    borderColor: c.line,
+    backgroundColor: c.fill,
+    borderWidth: 2,
+    pointRadius: 4,
+    pointHoverRadius: 6,
+    pointBackgroundColor: c.line,
+    tension: 0.35,
+    fill: true
+  };
+}
+
+// Non-linear scale: 0-100 takes 80% of chart height, 100-250 takes 20%
+// We map real values → normalized 0..1 for positioning
+const BREAK = 100;
+const MAX_VAL = 250;
+const LOWER_FRAC = 0.80; // 80% of pixel height for 0–100
+
+function toNorm(v) {
+  if (v <= BREAK) return (v / BREAK) * LOWER_FRAC;
+  return LOWER_FRAC + ((v - BREAK) / (MAX_VAL - BREAK)) * (1 - LOWER_FRAC);
+}
+function fromNorm(n) {
+  if (n <= LOWER_FRAC) return (n / LOWER_FRAC) * BREAK;
+  return BREAK + ((n - LOWER_FRAC) / (1 - LOWER_FRAC)) * (MAX_VAL - BREAK);
+}
+
+// Custom Chart.js scale
+class NonLinearScale extends Chart.Scale {
+  constructor(cfg) { super(cfg); }
+  parse(raw) { return typeof raw === 'number' ? raw : parseFloat(raw); }
+  determineDataLimits() { this.min = 0; this.max = MAX_VAL; }
+  buildTicks() {
+    const ticks = [0,10,20,30,40,50,60,70,80,90,100,150,200,250];
+    this.ticks = ticks.map(v => ({ value: v, label: String(v) }));
+  }
+  getLabelForValue(v) { return String(Math.round(v)); }
+  getPixelForValue(v) {
+    const norm = toNorm(Math.max(0, Math.min(MAX_VAL, v)));
+    // chart area: top = this.top, bottom = this.bottom
+    return this.bottom - norm * (this.bottom - this.top);
+  }
+  getValueForPixel(px) {
+    const norm = (this.bottom - px) / (this.bottom - this.top);
+    return fromNorm(Math.max(0, Math.min(1, norm)));
+  }
+}
+NonLinearScale.id = 'nonlinear';
+NonLinearScale.defaults = {};
+Chart.register(NonLinearScale);
+
+// Break-line annotation plugin
+const breakLinePlugin = {
+  id: 'breakLine',
+  afterDraw(chart) {
+    if (chart.config.options.showBreakLine !== true) return;
+    const scale = chart.scales['y'];
+    if (!scale) return;
+    const px = scale.getPixelForValue(BREAK);
+    const { left, right } = chart.chartArea;
+    const ctx = chart.ctx;
+    ctx.save();
+    // dashed separator line
+    ctx.setLineDash([6, 4]);
+    ctx.strokeStyle = 'rgba(255,255,255,0.18)';
+    ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(left, px); ctx.lineTo(right, px); ctx.stroke();
+    // label
+    ctx.setLineDash([]);
+    ctx.fillStyle = 'rgba(255,255,255,0.3)';
+    ctx.font = '10px Space Mono, monospace';
+    ctx.fillText('── scale compressed above 100 ──', left + 8, px - 5);
+    ctx.restore();
+  }
+};
+Chart.register(breakLinePlugin);
+
+function buildMainChart() {
+  const ctx = document.getElementById('mainChart').getContext('2d');
+  const datasets = Object.keys(activeSegs)
+    .filter(s => activeSegs[s])
+    .map(s => makeDataset(s, currentMetric));
+
+  if (mainChart) mainChart.destroy();
+  mainChart = new Chart(ctx, {
+    type: 'line',
+    data: { labels: months, datasets },
+    options: {
+      ...chartDefaults,
+      showBreakLine: true,
+      scales: {
+        x: chartDefaults.scales.x,
+        y: {
+          type: 'nonlinear',
+          grid: { color: (ctx) => {
+            const v = ctx.tick?.value;
+            if (v === BREAK) return 'rgba(255,255,255,0.25)';
+            return 'rgba(30,45,69,0.6)';
+          }},
+          ticks: {
+            color: (ctx) => {
+              const v = ctx.tick?.value;
+              if (v > BREAK) return '#94a3b8';
+              return '#64748b';
+            },
+            font: { family: 'Space Mono', size: 10 },
+          }
+        }
+      }
+    }
+  });
+  buildLegend();
+  const label = currentMetric === 'median' ? 'Median' : 'Average';
+  document.getElementById('main-chart-title').textContent = `📈 Overall Trend — All Segments · ${label}`;
+}
+
+function buildTotalChart() {
+  const ctx = document.getElementById('totalChart').getContext('2d');
+  const c = colors.GT;
+  if (totalChart) totalChart.destroy();
+  totalChart = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels: months,
+      datasets: [
+        {
+          label: 'Median',
+          data: data.GT.median,
+          borderColor: c.line,
+          backgroundColor: c.fill,
+          borderWidth: 2.5,
+          pointRadius: 4,
+          pointBackgroundColor: c.line,
+          tension: 0.35,
+          fill: true
+        },
+        {
+          label: 'Average',
+          data: data.GT.average,
+          borderColor: '#c084fc',
+          backgroundColor: 'rgba(192,132,252,0.05)',
+          borderWidth: 2,
+          borderDash: [5,3],
+          pointRadius: 3,
+          pointBackgroundColor: '#c084fc',
+          tension: 0.35,
+          fill: false
+        }
+      ]
+    },
+    options: { ...chartDefaults, plugins: { ...chartDefaults.plugins, legend: { display: true, labels: { color: '#94a3b8', font: { family: 'Space Mono', size: 10 } } } } }
+  });
+}
+
+function buildStats() {
+  const segs = ['XS','S','M','L'];
+  const segColors = { XS: 'var(--xs)', S: 'var(--s)', M: 'var(--m)', L: 'var(--l)' };
+  const latest = months.length - 1;
+  const el = document.getElementById('stats-row');
+  el.innerHTML = segs.map(s => {
+    const val = data[s][currentMetric][latest];
+    const prev = data[s][currentMetric][latest - 1];
+    const diff = val - prev;
+    const trend = diff >= 0 ? `▲ ${diff}` : `▼ ${Math.abs(diff)}`;
+    const trendColor = diff >= 0 ? '#34d399' : '#f87171';
+    return `<div class="stat-card">
+      <div class="stat-seg" style="color:${segColors[s]}">${s}</div>
+      <div class="stat-val" style="color:${segColors[s]}">${val}</div>
+      <div class="stat-label">${currentMetric === 'median' ? 'Median' : 'Average'} · Mar 26</div>
+      <div style="font-size:11px;color:${trendColor};margin-top:4px;font-family:'Space Mono',monospace">${trend} vs Feb</div>
+    </div>`;
+  }).join('');
+}
+
+function buildLegend() {
+  const el = document.getElementById('main-legend');
+  const segs = Object.keys(activeSegs).filter(s => activeSegs[s]);
+  el.innerHTML = segs.map(s => `
+    <div class="legend-item">
+      <div class="legend-line" style="background:${colors[s].line}"></div>
+      <span>${s}</span>
+    </div>
+  `).join('');
+}
+
+function setMetric(m) {
+  currentMetric = m;
+  document.getElementById('btn-median').classList.toggle('active', m === 'median');
+  document.getElementById('btn-average').classList.toggle('active', m === 'average');
+  buildAll();
+}
+
+function toggleSeg(s) {
+  activeSegs[s] = !activeSegs[s];
+  document.getElementById('seg-' + s.toLowerCase()).classList.toggle('active', activeSegs[s]);
+  buildAll();
+}
+
+function buildAll() {
+  buildMainChart();
+  buildTotalChart();
+  buildStats();
+}
+
+buildAll();
+</script>
+</body>
+</html>
